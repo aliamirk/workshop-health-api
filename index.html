@@ -67,6 +67,26 @@
   .row:last-child { border-bottom: none; }
   .label { color: var(--muted); }
   .value { font-weight: 500; text-align: right; }
+  .hostname-block {
+    background: rgba(61, 220, 132, 0.08);
+    border: 1px solid rgba(61, 220, 132, 0.35);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .hostname-label {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .hostname-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+  }
   .footer {
     margin-top: 18px;
     font-size: 11px;
@@ -92,8 +112,11 @@ async function loadStatus() {
     const res = await fetch('/status');
     const data = await res.json();
     content.innerHTML = `
+      <div class="hostname-block">
+        <div class="hostname-label">Hostname</div>
+        <div class="hostname-value">${data.hostname}</div>
+      </div>
       <div class="row"><span class="label">Status</span><span class="value">${data.status}</span></div>
-      <div class="row"><span class="label">Hostname</span><span class="value">${data.hostname}</span></div>
       <div class="row"><span class="label">Uptime</span><span class="value">${data.uptime}</span></div>
       <div class="row"><span class="label">Memory</span><span class="value">${data.memory.free} free / ${data.memory.total}</span></div>
       <div class="row"><span class="label">CPU Cores</span><span class="value">${data.cpu_cores}</span></div>
