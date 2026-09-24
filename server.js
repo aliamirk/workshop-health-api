@@ -1,68 +1,94 @@
-const express = require('express');
+const cluster = require('cluster');
 const os = require('os');
-const path = require('path');
+const express = require('express');
 
-const app = express();
 const PORT = process.env.PORT || 3000;
 
-const startTime = process.hrtime.bigint();
+const CPU_ITERATIONS = 200000;
 
-function formatBytes(bytes) {
-  return `${Math.round(bytes / (1024 * 1024))} MB`;
-}
+if (cluster.isPrimary) {
+    const workers = os.cpus().length;
 
-const METADATA_BASE = 'http://169.254.169.254/latest';
+    console.log('Primary process: ' + process.pid);
+    console.log('Starting ' + workers + ' workers');
 
-// Pulls subnet/VPC/AZ from the EC2 instance metadata service (IMDSv2).
-async function getNetworkInfo() {
-  try {
-    const tokenRes = await fetch(`${METADATA_BASE}/api/token`, {
-      method: 'PUT',
-      headers: { 'X-aws-ec2-metadata-token-ttl-seconds': '21600' },
-      signal: AbortSignal.timeout(1000)
+    for (let i = 0; i < workers; i++) {
+        cluster.fork();
+    }
+
+    // Auto-restart workers if any crash during load testing
+    cluster.on('exit', (worker, code, signal) => {
+        console.log(`Worker ${worker.process.pid} exited. Respawning...`);
+        cluster.fork();
     });
-    const token = await tokenRes.text();
-    const headers = { 'X-aws-ec2-metadata-token': token };
 
-    const mac = await fetch(`${METADATA_BASE}/meta-data/mac`, { headers }).then(r => r.text());
-    const [subnetId, az] = await Promise.all([
-      fetch(`${METADATA_BASE}/meta-data/network/interfaces/macs/${mac}/subnet-id`, { headers }).then(r => r.text()),
-      fetch(`${METADATA_BASE}/meta-data/placement/availability-zone`, { headers }).then(r => r.text())
-    ]);
+} else {
+    const app = express();
 
-    return { subnet_id: subnetId, availability_zone: az };
-  } catch (e) {
-    // Not on EC2, or metadata service unreachable
-    return { subnet_id: null, availability_zone: null };
-  }
+    // High-RPS performance tweak: disable unnecessary header serialization
+    app.disable('x-powered-by');
+
+    const startTime = process.hrtime.bigint();
+
+    function formatBytes(bytes) {
+        return Math.round(bytes / (1024 * 1024)) + ' MB';
+    }
+
+    const HOSTNAME = os.hostname();
+    const TOTAL_MEMORY = formatBytes(os.totalmem());
+    const CPU_CORES = os.cpus().length;
+
+    const SUBNET_ID = process.env.SUBNET_ID || 'NA';
+    const AVAILABILITY_ZONE = process.env.AVAILABILITY_ZONE || 'NA';
+
+    function getStatus() {
+        const uptimeSeconds =
+            Number(process.hrtime.bigint() - startTime) / 1e9;
+
+        return {
+            status: 'healthy',
+            hostname: HOSTNAME,
+            worker_pid: process.pid,
+            uptime: uptimeSeconds.toFixed(2) + 's',
+            memory: {
+                total: TOTAL_MEMORY,
+                free: formatBytes(os.freemem())
+            },
+            cpu_cores: CPU_CORES,
+            network: {
+                subnet_id: SUBNET_ID,
+                availability_zone: AVAILABILITY_ZONE
+            },
+            timestamp: new Date().toISOString()
+        };
+    }
+
+    app.get('/status', (req, res) => {
+        res.json(getStatus());
+    });
+
+    app.get('/cpu', (req, res) => {
+        let result = 0;
+
+        // Perform fast arithmetic operations that prevent V8 loop-unrolling optimizations
+        for (let i = 0; i < CPU_ITERATIONS; i++) {
+            result = (result + i) ^ (i & 0xFF);
+        }
+
+        res.json({
+            status: 'ok',
+            worker_pid: process.pid,
+            iterations: CPU_ITERATIONS,
+            result: result
+        });
+    });
+
+    app.use(express.static(__dirname));
+
+    app.listen(PORT, '0.0.0.0', 4096, () => {
+        console.log(
+            'Worker ' + process.pid +
+            ' listening on port ' + PORT
+        );
+    });
 }
-
-async function getStatus() {
-  const uptimeSeconds = Number(process.hrtime.bigint() - startTime) / 1e9;
-  const network = await getNetworkInfo();
-
-  return {
-    status: 'healthy',
-    hostname: os.hostname(),
-    uptime: `${uptimeSeconds.toFixed(2)}s`,
-    memory: {
-      total: formatBytes(os.totalmem()),
-      free: formatBytes(os.freemem())
-    },
-    cpu_cores: os.cpus().length,
-    network,
-    timestamp: new Date().toISOString()
-  };
-}
-
-// The one and only API endpoint
-app.get('/status', async (req, res) => {
-  res.json(await getStatus());
-});
-
-// Simple browser UI that renders the same data
-app.use(express.static(__dirname));
-
-app.listen(PORT, () => {
-  console.log(`Health API listening on port ${PORT}`);
-});

@@ -120,6 +120,8 @@ async function loadStatus() {
       <div class="row"><span class="label">Uptime</span><span class="value">${data.uptime}</span></div>
       <div class="row"><span class="label">Memory</span><span class="value">${data.memory.free} free / ${data.memory.total}</span></div>
       <div class="row"><span class="label">CPU Cores</span><span class="value">${data.cpu_cores}</span></div>
+      <div class="row"><span class="label">Subnet</span><span class="value">${data.network.subnet_id ?? 'n/a'}</span></div>
+      <div class="row"><span class="label">Availability Zone</span><span class="value">${data.network.availability_zone ?? 'n/a'}</span></div>
       <div class="row"><span class="label">Timestamp</span><span class="value">${data.timestamp}</span></div>
     `;
   } catch (e) {
