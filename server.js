@@ -67,7 +67,7 @@ if (cluster.isPrimary) {
         res.json(getStatus());
     });
 
-    app.get('/cpu', (req, res) => {
+    app.get('/stress', (req, res) => {
         let result = 0;
 
         // Perform fast arithmetic operations that prevent V8 loop-unrolling optimizations
